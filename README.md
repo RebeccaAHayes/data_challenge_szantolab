@@ -8,6 +8,7 @@ Hayes_data_challenge_report.rmd
 **Outputs:**    
 HAM_total_summary.RData  
 HAM_total_summary.csv  
-  - These contain the same information, a response to item 1 in the data challenge assignment description.  
+  - These contain the same information, a response to item 1 in the data challenge assignment description.
+
 Hayes_data_challenge_report.html  
   - This contains the data visualizations described in item 2 of the data challenge assignment document.  
