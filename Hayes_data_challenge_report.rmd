@@ -1,0 +1,174 @@
+---
+title: "PROTECT Recruitment report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(ggplot2)
+library(flextable)
+library(officer)
+library(patchwork)
+
+#load("CodeChallenge2024.RData") #Only necessary if not running within parent R script
+```
+```{r make figures,include=F}
+recruitment_data$Groupf<-factor(recruitment_data$Group,
+                                levels=c("1HC","2DNA","3ATT","NON","NA/ineligible"))
+
+#Make a histogram to show total recruitment by source
+hist_source<-ggplot(data=recruitment_data,
+                    mapping=aes(x=RecruitSource,fill=RecruitSource)) + 
+  geom_bar()+
+  geom_text(stat='count',aes(label=after_stat(count)),hjust=-0.25)+
+  theme_classic(base_size=14) +
+  coord_flip()+scale_x_discrete(limits=rev)+
+  theme(legend.position = "none")+
+  scale_x_discrete(labels = function(x) str_wrap(str_replace_all(str_remove(x,"[0-9]+ "),"/","/ "), width = 10))+ 
+  scale_fill_viridis_d()+
+  labs(x = "Recruitment Source", y = "N participants")  
+
+#Box plot to show differences in age group by recruitment source
+age_by_source<-ggplot(data=recruitment_data,
+                 mapping=aes(x=RecruitSource,y=Age,fill=RecruitSource)) +
+  geom_boxplot() + theme_classic(base_size=14) +
+  coord_flip()+scale_x_discrete(limits=rev)+
+  theme(legend.position = "none")+
+  scale_x_discrete(labels = function(x) str_wrap(str_replace_all(str_remove(x,"[0-9]+ "),"/","/ "), width = 10))+
+  scale_fill_viridis_d() +
+  labs(x="Recruitment Source")
+
+#Set up a color palette for gender info
+palette_gender <- colorRampPalette(colors = c("#D81B60", "#1E88E5", "#999"))(3)
+names(palette_gender)<-c("F","M",NA)
+gender_scale<-scale_fill_manual(name = "Gender",values = palette_gender)
+
+#Make a histogram to show overall age distribution
+hist_age<-ggplot(data=recruitment_data,
+                 mapping=aes(x=Age,fill=cut(Age,breaks=c(29,35,40,45,50,55,60,65,70,75)))) +
+  scale_x_binned(n.breaks=10,nice.breaks=T)+ scale_y_continuous() +
+  geom_bar()+
+  guides(fill="none")+
+  geom_text(stat='count',aes(label=after_stat(count)),vjust=-0.25)+
+  theme_classic(base_size=14) + 
+  scale_fill_manual(values=colorRampPalette(colors=c("#000000","#DDDDDDDD"))(10))+ylab("N participants")
+
+#Make a histogram to show overall gender distribution
+hist_gender<-ggplot(data=recruitment_data,
+                 mapping=aes(x=Gender,fill=Gender)) +
+  geom_bar()+guides(fill="none")+
+  geom_text(stat='count',aes(label=after_stat(count)),vjust=-0.25)+
+  theme_classic(base_size=14) + gender_scale +ylab("N participants")
+
+#Make a density plot to show age distribution by gender
+age_sex_density<-ggplot(data=recruitment_data,
+                 mapping=aes(x=Age,fill=Gender,alpha=0.8)) +
+  geom_density(aes(y=after_stat(scaled)))+ guides(alpha="none")+
+  scale_x_continuous(limits=c(min(ggplot_build(hist_age)$data[[1]]$xmin-0.25),
+           max(ggplot_build(hist_age)$data[[1]]$xmax+0.25)),
+           breaks=c(35,40,45,50,55,60,65,70))+
+  theme_classic(base_size=14) + gender_scale +ylab("Scaled Density")
+
+#Combine age and sex plots for ease of reference
+age_and_sex<-hist_age+hist_gender+age_sex_density+guide_area()+plot_layout(guides="collect",ncol=2,widths=c(4,1))
+
+#Boxplot of ages by participant group
+age_by_group<-ggplot(data=recruitment_data,
+                     mapping=aes(x=Groupf,y=Age,fill=Groupf))+
+  geom_boxplot() + theme_classic(base_size=14) +
+  theme(legend.position = "none")+
+  scale_fill_viridis_d(option="plasma",begin=0.2,end=0.8) +labs(x="Group")
+
+#Histogram of counts by participant group
+hist_group<-ggplot(data=recruitment_data,
+                 mapping=aes(x=Groupf,fill=Groupf)) +
+  geom_bar()+
+  geom_text(stat='count',aes(label=after_stat(count)),vjust=-0.25)+
+  theme_classic(base_size=14)+
+  theme(legend.position = "none")+
+  scale_fill_viridis_d(option="plasma",begin=0.2,end=0.8)+labs(x="Group",y="N participants")
+
+
+```
+
+
+```{r make_demotable,include=F}
+
+#Make summary table with detailed breakdown of counts by group
+demotable<-recruitment_data %>% group_by(Group) %>%
+    summarize(N=round(n(),digits=0),
+              mean_age=round(mean(Age),digits=2),
+              sd_age=round(sd(Age),digits=1),
+              min_age=round(min(Age),digits=1),
+              max_age=round(max(Age),digits=1),
+              n_F=sum(Gender=="F"),
+              perc_F=(sum(Gender=="F")/n()*100)) %>%
+  ungroup() %>%
+  bind_rows(., #Combine with total counts
+            summarize(recruitment_data,Group="TOTAL",
+                      N=round(n(),digits=0),
+                      mean_age=round(mean(Age),digits=2),
+                      sd_age=round(sd(Age),digits=1),
+                      min_age=round(min(Age),digits=1),
+                      max_age=round(max(Age),digits=1),
+                      n_F=sum(Gender=="F"),
+                      perc_F=(sum(Gender=="F")/n()*100))) %>%
+  mutate(Age_mean_sd=paste0(mean_age," (",sd_age,")"),
+         Age_range=paste0(min_age,"-",max_age),
+         F_n_perc=paste0(n_F," (",round(perc_F,digits=1),"%)")) %>%
+  select(Group,N,F_n_perc,Age_mean_sd,Age_range)
+#Add row names in as a column & pivot table to be more readable
+demotable_T<-as_tibble(cbind(names(demotable),t(demotable))) #%>% 
+
+#Format column names and remove unneeded columns
+colnames(demotable_T)<-demotable_T[1,]
+demotable_T<-demotable_T[-1,] %>%
+  select(1:4,6,5,7)
+demotable_T[is.na(demotable_T)]<-"0"
+demotable_T[,1]<-c("N","N Female (%)","Mean Age (SD)","Age Range")
+
+#Settings for table borders
+heavy_line<-fp_border(color="black",style="solid",width=1.5)
+light_line<-fp_border(color="black",style="solid",width=0.5)
+
+#Make final display table with formatting
+demotableFlex<-flextable(demotable_T,col_keys=c(names(demotable_T))) %>%
+  set_header_labels("Group"="Group:") %>% 
+  theme_box() %>% align(align="center",part="all") %>%
+  border_outer(border=heavy_line,part="all") %>%
+  flextable::border(i=c(2,4),border.bottom=heavy_line,part="body") %>% autofit() %>%
+  fix_border_issues(part="all")
+
+```
+
+#### **Recruited Participants by Source**  {.tabset}  
+##### N Participants by Source
+```{r show_source,include=T}
+hist_source
+```
+
+##### Participant Age by Source
+```{r show_sourceage,include=T}
+age_by_source
+```
+
+#### **Demographics of Recruited Participants** {.tabset}  
+
+##### **Summary Table**  
+
+`r demotableFlex`  
+
+##### **Recruited Participants by Age and Gender**  
+
+```{r show_age,include=T,fig.height=7.5}
+age_and_sex
+```
+
+
+##### **Recruited Participants by Group and Age**  
+
+```{r show_groupage,include=T,fig.height=3.5}
+hist_group
+age_by_group
+```
